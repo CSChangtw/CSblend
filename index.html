@@ -1,0 +1,721 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>粉體混合比例敏感度分析</title>
+<meta name="theme-color" content="#e8c96a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="敏感度分析">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" href="icon.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@300;400;600;700&family=Noto+Sans+TC:wght@300;400;500&display=swap');
+
+  :root {
+    --bg: #0f1117;
+    --surface: #181c27;
+    --border: #2a2f3e;
+    --accent1: #e8c96a;
+    --accent2: #5b9cf6;
+    --accent3: #f07070;
+    --accent4: #6de0b0;
+    --text: #d8dce8;
+    --muted: #6b7280;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: var(--bg); color: var(--text);
+    font-family: 'Noto Sans TC', sans-serif;
+    min-height: 100vh; padding: 1.5rem 1rem;
+  }
+  body::before {
+    content: ''; position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(91,156,246,0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(91,156,246,0.04) 1px, transparent 1px);
+    background-size: 40px 40px; pointer-events: none;
+  }
+
+  /* ── header ── */
+  header { text-align: center; margin-bottom: 1.2rem; }
+  header h1 {
+    font-family: 'Noto Serif TC', serif;
+    font-size: clamp(1.1rem,3vw,1.7rem); font-weight: 700;
+    color: var(--accent1); letter-spacing: .05em; margin-bottom: .3rem;
+  }
+  header p { font-size: .78rem; color: var(--muted); letter-spacing: .08em; }
+
+  /* ── 模型切換 ── */
+  .model-switcher {
+    display: flex; justify-content: center; gap: .6rem;
+    margin-bottom: 1.3rem;
+  }
+  .model-btn {
+    padding: .42rem 1.2rem; border-radius: 20px; border: 1.5px solid var(--border);
+    background: transparent; color: var(--muted); font-size: .8rem; cursor: pointer;
+    font-family: 'Noto Sans TC', sans-serif; transition: all .2s;
+  }
+  .model-btn:hover { border-color: var(--accent1); color: var(--text); }
+  .model-btn.active {
+    background: rgba(232,201,106,0.12);
+    border-color: var(--accent1); color: var(--accent1); font-weight: 600;
+  }
+
+  /* 模型說明標籤 */
+  .model-badge {
+    display: inline-block; font-size: .68rem; padding: .15rem .55rem;
+    border-radius: 4px; margin-left: .5rem; vertical-align: middle;
+    font-weight: 500;
+  }
+  .badge-harmonic { background: rgba(91,156,246,.15); color: var(--accent2); }
+  .badge-linear   { background: rgba(240,112,112,.15); color: var(--accent3); }
+
+  /* ── 控制面板 ── */
+  .control-panel {
+    max-width: 900px; margin: 0 auto 1.5rem;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 14px; padding: 1.1rem 1.3rem 1.3rem; position: relative;
+  }
+  .control-panel::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    border-radius: 14px 14px 0 0;
+  }
+  .panel-harmonic::before { background: linear-gradient(90deg,var(--accent2),var(--accent1)); }
+  .panel-linear::before   { background: linear-gradient(90deg,var(--accent3),var(--accent1)); }
+
+  .panel-title {
+    font-size: .73rem; color: var(--muted);
+    letter-spacing: .1em; text-transform: uppercase; margin-bottom: .85rem;
+    display: flex; align-items: center; gap: .4rem;
+  }
+
+  .controls-row {
+    display: grid; grid-template-columns: repeat(3,1fr); gap: 1rem 1.4rem;
+  }
+  @media (max-width:580px) { .controls-row { grid-template-columns: 1fr; } }
+
+  .ctrl-group { display: flex; flex-direction: column; gap: .33rem; }
+  .ctrl-label {
+    font-size: .72rem; color: var(--muted);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+
+  .val-input {
+    width: 82px; background: var(--bg); border: 1px solid var(--border);
+    border-radius: 5px; padding: .15rem .4rem;
+    font-size: .88rem; font-weight: 700;
+    font-family: 'Noto Serif TC', serif; text-align: right; outline: none;
+    -moz-appearance: textfield;
+  }
+  .val-input::-webkit-inner-spin-button,
+  .val-input::-webkit-outer-spin-button { -webkit-appearance: none; }
+  .val-input:focus { border-color: var(--accent1); }
+  .val-rm { color: var(--accent2); border-color: rgba(91,156,246,.4); }
+  .val-dc { color: var(--accent3); border-color: rgba(240,112,112,.4); }
+  .val-ds { color: var(--accent4); border-color: rgba(109,224,176,.4); }
+
+  input[type=range] {
+    width: 100%; height: 4px;
+    -webkit-appearance: none; appearance: none;
+    border-radius: 2px; outline: none; cursor: pointer;
+  }
+  input[type=range].rm { background: linear-gradient(90deg,var(--accent2) var(--pct,50%),var(--border) var(--pct,50%)); }
+  input[type=range].dc { background: linear-gradient(90deg,var(--accent3) var(--pct,50%),var(--border) var(--pct,50%)); }
+  input[type=range].ds { background: linear-gradient(90deg,var(--accent4) var(--pct,50%),var(--border) var(--pct,50%)); }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 15px; height: 15px;
+    border-radius: 50%; border: 2px solid var(--bg); cursor: pointer; transition: transform .15s;
+  }
+  input[type=range].rm::-webkit-slider-thumb { background: var(--accent2); }
+  input[type=range].dc::-webkit-slider-thumb { background: var(--accent3); }
+  input[type=range].ds::-webkit-slider-thumb { background: var(--accent4); }
+  input[type=range]::-webkit-slider-thumb:hover { transform: scale(1.3); }
+
+  .ctrl-range-hint {
+    display: flex; justify-content: space-between; font-size: .62rem; color: #4b5563;
+  }
+
+  /* ── 公式顯示列 ── */
+  .formula-bar {
+    margin-top: .8rem; padding: .55rem .8rem;
+    background: rgba(255,255,255,.02); border: 1px solid var(--border);
+    border-radius: 8px; font-size: .76rem; color: var(--muted);
+    display: flex; flex-wrap: wrap; gap: .3rem .8rem; align-items: center;
+  }
+  .formula-bar .fm { color: var(--text); font-family: 'Noto Serif TC', serif; }
+  .formula-bar .fm-harmonic { color: var(--accent2); }
+  .formula-bar .fm-linear   { color: var(--accent3); }
+
+  /* ── 結果列 ── */
+  .result-bar {
+    margin-top: .9rem; padding-top: .8rem;
+    border-top: 1px solid var(--border);
+    display: grid; grid-template-columns: repeat(auto-fit,minmax(160px,1fr)); gap: .55rem;
+  }
+  .result-card {
+    background: rgba(255,255,255,.03); border: 1px solid var(--border);
+    border-radius: 8px; padding: .5rem .85rem;
+  }
+  .rc-label { font-size: .67rem; color: var(--muted); margin-bottom: .18rem; }
+  .rc-val {
+    font-size: 1.05rem; font-weight: 700;
+    font-family: 'Noto Serif TC', serif; color: var(--accent1);
+  }
+  .rc-val.invalid { color: var(--accent3); }
+
+  .warn-msg { font-size: .7rem; color: var(--accent3); display: none; margin-top: .4rem; }
+  .warn-msg.show { display: block; }
+
+  /* ── 圖表 ── */
+  .charts-grid {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 1.2rem;
+    max-width: 1100px; margin: 0 auto 1.5rem;
+  }
+  @media (max-width:680px) { .charts-grid { grid-template-columns: 1fr; } }
+
+  .chart-card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 1rem .9rem .9rem;
+    position: relative; overflow: hidden;
+  }
+  .chart-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0; height: 3px;
+  }
+  .card-1::before { background: linear-gradient(90deg,var(--accent2),var(--accent1)); }
+  .card-2::before { background: linear-gradient(90deg,var(--accent3),var(--accent1)); }
+  .card-3::before { background: linear-gradient(90deg,var(--accent4),var(--accent2)); }
+  .card-4::before { background: linear-gradient(90deg,var(--accent1),var(--accent4)); }
+
+  .chart-title {
+    font-family: 'Noto Serif TC', serif; font-size: .82rem;
+    font-weight: 600; color: var(--text); margin-bottom: .2rem;
+  }
+  .chart-sub { font-size: .67rem; color: var(--muted); margin-bottom: .6rem; min-height: 1.1em; }
+  .chart-wrap { position: relative; height: 195px; }
+
+  /* ── 表格 ── */
+  .summary {
+    max-width: 900px; margin: 0 auto 1.8rem;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; overflow: hidden;
+  }
+  .summary-title {
+    font-family: 'Noto Serif TC', serif; font-size: .88rem; font-weight: 600;
+    color: var(--accent1); padding: .8rem 1rem .45rem; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: .5rem;
+  }
+  .tbl-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; font-size: .76rem; white-space: nowrap; }
+  th {
+    background: rgba(91,156,246,.08); color: var(--accent2);
+    font-weight: 500; padding: .5rem .8rem; text-align: center; letter-spacing: .03em;
+  }
+  td { padding: .45rem .8rem; text-align: center; border-top: 1px solid var(--border); color: var(--text); }
+  tr:hover td { background: rgba(255,255,255,.03); }
+  .hl  { color: var(--accent1); font-weight: 600; }
+  .neg { color: var(--accent3); font-weight: 600; }
+  .pos { color: var(--accent4); font-weight: 600; }
+
+  footer {
+    text-align: center; font-size: .7rem; color: var(--muted);
+    padding-top: .9rem; border-top: 1px solid var(--border);
+    max-width: 1100px; margin: 0 auto; line-height: 1.9;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>粉體混合比例敏感度分析</h1>
+  <p>水泥／爐石粉二元系統</p>
+</header>
+
+<!-- 模型切換 -->
+<div class="model-switcher">
+  <button class="model-btn active" id="btnHarmonic" onclick="setModel('harmonic')">
+    調和平均　<small>1/ρ = wc/Dc + ws/Ds</small>
+  </button>
+  <button class="model-btn" id="btnLinear" onclick="setModel('linear')">
+    加權算術平均　<small>Dmix = wc·Dc + ws·Ds</small>
+  </button>
+</div>
+
+<!-- 控制面板 -->
+<div class="control-panel panel-harmonic" id="ctrlPanel">
+  <div class="panel-title">
+    參數設定
+    <span class="model-badge badge-harmonic" id="modelBadge">調和平均模型</span>
+  </div>
+
+  <div class="controls-row">
+    <!-- 混合比重（第一參數，標籤隨模型變） -->
+    <div class="ctrl-group">
+      <div class="ctrl-label">
+        <span id="lblRm">混合比重 ρ<sub>mix</sub></span>
+        <input type="number" id="inRm" class="val-input val-rm"
+               min="2.800" max="3.200" step="0.001" value="3.000">
+      </div>
+      <input type="range" id="slRm" class="rm" min="2.800" max="3.200" step="0.001" value="3.000">
+      <div class="ctrl-range-hint" id="hintRm"><span>2.800</span><span>3.200</span></div>
+    </div>
+
+    <!-- 水泥比重 -->
+    <div class="ctrl-group">
+      <div class="ctrl-label">
+        水泥比重 D<sub>c</sub>
+        <input type="number" id="inDc" class="val-input val-dc"
+               min="3.000" max="3.200" step="0.001" value="3.100">
+      </div>
+      <input type="range" id="slDc" class="dc" min="3.000" max="3.200" step="0.001" value="3.100">
+      <div class="ctrl-range-hint"><span>3.000</span><span>3.200</span></div>
+    </div>
+
+    <!-- 爐石粉比重 -->
+    <div class="ctrl-group">
+      <div class="ctrl-label">
+        爐石粉比重 D<sub>s</sub>
+        <input type="number" id="inDs" class="val-input val-ds"
+               min="2.800" max="3.000" step="0.001" value="2.900">
+      </div>
+      <input type="range" id="slDs" class="ds" min="2.800" max="3.000" step="0.001" value="2.900">
+      <div class="ctrl-range-hint"><span>2.800</span><span>3.000</span></div>
+    </div>
+  </div>
+
+  <!-- 公式列 -->
+  <div class="formula-bar" id="formulaBar">
+    <span>反推公式：</span>
+    <span class="fm fm-harmonic" id="formulaTxt">
+      w<sub>c</sub> = ( 1/ρ<sub>mix</sub> − 1/D<sub>s</sub> ) ÷ ( 1/D<sub>c</sub> − 1/D<sub>s</sub> )
+    </span>
+  </div>
+
+  <!-- 結果摘要 -->
+  <div class="result-bar">
+    <div class="result-card">
+      <div class="rc-label">水泥比例 w<sub>c</sub></div>
+      <div class="rc-val" id="resWc">—</div>
+    </div>
+    <div class="result-card">
+      <div class="rc-label">爐石粉比例 w<sub>s</sub></div>
+      <div class="rc-val" id="resWs">—</div>
+    </div>
+    <div class="result-card">
+      <div class="rc-label">重量比（水泥 : 爐石粉）</div>
+      <div class="rc-val" id="resRatio">—</div>
+    </div>
+    <div class="result-card">
+      <div class="rc-label" id="rcDmixLabel">驗算 D<sub>mix</sub>（算術平均）</div>
+      <div class="rc-val" id="resDmix">—</div>
+    </div>
+  </div>
+  <div class="warn-msg" id="warnMsg"></div>
+</div>
+
+<!-- 圖表 -->
+<div class="charts-grid">
+  <div class="chart-card card-1">
+    <div class="chart-title" id="ch1Title">① 混合比重 → 水泥比例</div>
+    <div class="chart-sub" id="sub1"></div>
+    <div class="chart-wrap"><canvas id="c1"></canvas></div>
+  </div>
+  <div class="chart-card card-2">
+    <div class="chart-title">② 水泥比重 D<sub>c</sub> → 水泥比例</div>
+    <div class="chart-sub" id="sub2"></div>
+    <div class="chart-wrap"><canvas id="c2"></canvas></div>
+  </div>
+  <div class="chart-card card-3">
+    <div class="chart-title">③ 爐石粉比重 D<sub>s</sub> → 水泥比例</div>
+    <div class="chart-sub" id="sub3"></div>
+    <div class="chart-wrap"><canvas id="c3"></canvas></div>
+  </div>
+  <div class="chart-card card-4">
+    <div class="chart-title">④ 敏感度比較（|Δw<sub>c</sub>| per Δ0.001）</div>
+    <div class="chart-sub">各參數 +0.001 時水泥比例的絕對變化量</div>
+    <div class="chart-wrap"><canvas id="c4"></canvas></div>
+  </div>
+</div>
+
+<!-- 敏感度表格 -->
+<div class="summary">
+  <div class="summary-title">
+    敏感度數值彙整（Δ = 0.001）
+    <span class="model-badge" id="tblBadge">調和平均模型</span>
+  </div>
+  <div class="tbl-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>變動參數</th>
+          <th>當前值</th>
+          <th>基準 w<sub>c</sub> (%)</th>
+          <th>+0.001 後 w<sub>c</sub> (%)</th>
+          <th>Δw<sub>c</sub> (%)</th>
+          <th>|敏感度| (%/0.001)</th>
+          <th>相對敏感度</th>
+        </tr>
+      </thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<footer id="footerTxt">
+  調和平均：1/ρ<sub>mix</sub> = w<sub>c</sub>/D<sub>c</sub> + w<sub>s</sub>/D<sub>s</sub><br>
+  適用條件：D<sub>s</sub> &lt; ρ<sub>mix</sub> &lt; D<sub>c</sub>（理想混合、體積加成性成立）
+</footer>
+
+<script>
+// ══ 狀態 ══════════════════════════════════════════════
+let MODEL = 'harmonic';   // 'harmonic' | 'linear'
+let Rm = 3.000, Dc = 3.100, Ds = 2.900;
+
+// ══ 核心計算（兩種模型） ══════════════════════════════
+function calcWc_harmonic(Rm, Dc, Ds) {
+  if (Math.abs(Dc-Ds) < 1e-9) return NaN;
+  return (1/Rm - 1/Ds) / (1/Dc - 1/Ds);
+}
+function calcWc_linear(Dmix, Dc, Ds) {
+  if (Math.abs(Dc-Ds) < 1e-9) return NaN;
+  return (Dmix - Ds) / (Dc - Ds);
+}
+function calcWc(rm, dc, ds) {
+  return MODEL === 'harmonic'
+    ? calcWc_harmonic(rm, dc, ds)
+    : calcWc_linear(rm, dc, ds);
+}
+
+function isValid_harmonic(Rm, Dc, Ds) {
+  const lo = Math.min(Dc,Ds), hi = Math.max(Dc,Ds);
+  return Rm > lo+1e-6 && Rm < hi-1e-6;
+}
+function isValid_linear(Dmix, Dc, Ds) {
+  const lo = Math.min(Dc,Ds), hi = Math.max(Dc,Ds);
+  return Dmix >= lo-1e-6 && Dmix <= hi+1e-6;
+}
+function isValid(rm, dc, ds) {
+  return MODEL === 'harmonic'
+    ? isValid_harmonic(rm, dc, ds)
+    : isValid_linear(rm, dc, ds);
+}
+
+// ══ Chart.js ══════════════════════════════════════════
+Chart.defaults.color = '#6b7280';
+Chart.defaults.font.family = "'Noto Sans TC', sans-serif";
+Chart.defaults.font.size = 10;
+const GC = 'rgba(255,255,255,0.06)';
+
+function makeOpts(xLabel, yLabel, ttCb) {
+  return {
+    responsive: true, maintainAspectRatio: false,
+    animation: { duration: 180 },
+    interaction: { mode: 'index', intersect: false },
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: '#181c27', borderColor: '#2a2f3e', borderWidth: 1,
+        titleColor: '#e8c96a', bodyColor: '#d8dce8', padding: 9,
+        callbacks: { label: ttCb }
+      }
+    },
+    scales: {
+      x: {
+        title: { display: true, text: xLabel, color: '#9ca3af', font: { size: 9 } },
+        grid: { color: GC }, ticks: { maxTicksLimit: 7, font: { size: 9 } }
+      },
+      y: {
+        title: { display: true, text: yLabel, color: '#9ca3af', font: { size: 9 } },
+        grid: { color: GC }, ticks: { font: { size: 9 } }
+      }
+    }
+  };
+}
+
+function buildLine(id, color, xLabel) {
+  return new Chart(document.getElementById(id), {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [
+        { data:[], borderColor:color, fill:false, tension:.35, pointRadius:0, borderWidth:2 },
+        { data:[], borderColor:'#e8c96a', backgroundColor:'#e8c96a',
+          pointRadius:7, pointHoverRadius:9, showLine:false }
+      ]
+    },
+    options: makeOpts(xLabel, 'wc (%)', ctx => ` wc = ${Number(ctx.parsed.y).toFixed(3)} %`)
+  });
+}
+
+const ch1 = buildLine('c1','#5b9cf6','混合比重');
+const ch2 = buildLine('c2','#f07070','D_c');
+const ch3 = buildLine('c3','#6de0b0','D_s');
+
+const ch4 = new Chart(document.getElementById('c4'), {
+  type: 'line',
+  data: {
+    labels: ['混合比重','D_c','D_s'],
+    datasets: [{
+      data: [0,0,0], borderColor:'#e8c96a',
+      fill: false, tension:.3,
+      pointRadius: 8, pointHoverRadius: 10,
+      pointBackgroundColor:['#5b9cf6','#f07070','#6de0b0'],
+      pointBorderColor:    ['#5b9cf6','#f07070','#6de0b0'],
+      borderWidth: 2
+    }]
+  },
+  options: {
+    ...makeOpts('參數','|Δwc| (%)  per Δ0.001', ctx => ` |Δwc| = ${Number(ctx.parsed.y).toFixed(4)} %`),
+    plugins: {
+      legend: { display:false },
+      tooltip: {
+        backgroundColor:'#181c27', borderColor:'#2a2f3e', borderWidth:1,
+        titleColor:'#e8c96a', bodyColor:'#d8dce8', padding:9,
+        callbacks: { label: ctx => ` |Δwc| = ${Number(ctx.parsed.y).toFixed(4)} %` }
+      }
+    }
+  }
+});
+
+// ══ 模型切換 ══════════════════════════════════════════
+function setModel(m) {
+  MODEL = m;
+  const isH = m === 'harmonic';
+
+  document.getElementById('btnHarmonic').classList.toggle('active', isH);
+  document.getElementById('btnLinear').classList.toggle('active', !isH);
+
+  const panel = document.getElementById('ctrlPanel');
+  panel.classList.toggle('panel-harmonic', isH);
+  panel.classList.toggle('panel-linear', !isH);
+
+  const badge = document.getElementById('modelBadge');
+  const tblBadge = document.getElementById('tblBadge');
+  badge.textContent = tblBadge.textContent = isH ? '調和平均模型' : '加權算術平均(粉體不適用)';
+  badge.className = tblBadge.className = 'model-badge ' + (isH ? 'badge-harmonic' : 'badge-linear');
+
+  // 第一個滑桿標籤與範圍
+  const lbl = document.getElementById('lblRm');
+  const slRm = document.getElementById('slRm');
+  const inRm = document.getElementById('inRm');
+  if (isH) {
+    lbl.innerHTML = '混合比重 ρ<sub>mix</sub>';
+    slRm.min = inRm.min = '2.500'; slRm.max = inRm.max = '3.500';
+    document.getElementById('hintRm').innerHTML = '<span>2.500</span><span>3.500</span>';
+  } else {
+    lbl.innerHTML = '混合密度 D<sub>mix</sub>';
+    slRm.min = inRm.min = '2.500'; slRm.max = inRm.max = '3.500';
+    document.getElementById('hintRm').innerHTML = '<span>2.500</span><span>3.500</span>';
+  }
+
+  // 公式
+  document.getElementById('formulaTxt').innerHTML = isH
+    ? 'w<sub>c</sub> = ( 1/ρ<sub>mix</sub> − 1/D<sub>s</sub> ) ÷ ( 1/D<sub>c</sub> − 1/D<sub>s</sub> )'
+    : 'w<sub>c</sub> = ( D<sub>mix</sub> − D<sub>s</sub> ) ÷ ( D<sub>c</sub> − D<sub>s</sub> )';
+  document.getElementById('formulaTxt').className =
+    'fm ' + (isH ? 'fm-harmonic' : 'fm-linear');
+
+  // 驗算標籤
+  document.getElementById('rcDmixLabel').innerHTML = isH
+    ? '驗算 D<sub>mix</sub>（算術平均）'
+    : '驗算 ρ<sub>mix</sub>（調和平均）';
+
+  // 圖表 x 軸標籤
+  ch1.options.scales.x.title.text = isH ? 'ρ_mix' : 'D_mix';
+  ch4.data.labels = [isH ? 'ρ_mix' : 'D_mix', 'D_c', 'D_s'];
+
+  // footer
+  document.getElementById('footerTxt').innerHTML = isH
+    ? '調和平均：1/ρ<sub>mix</sub> = w<sub>c</sub>/D<sub>c</sub> + w<sub>s</sub>/D<sub>s</sub><br>適用條件：D<sub>s</sub> &lt; ρ<sub>mix</sub> &lt; D<sub>c</sub>(理想混合、體積加成性成立)'
+    : '加權算術平均：D<sub>mix</sub> = w<sub>c</sub>·D<sub>c</sub> + w<sub>s</sub>·D<sub>s</sub><br>適用條件：D<sub>s</sub> ≤ D<sub>mix</sub> ≤ D<sub>c</sub>(體積加成不成立，粉體不適用)';
+
+  updateAll();
+}
+
+// ══ 主更新 ════════════════════════════════════════════
+function updateAll() {
+  const valid = isValid(Rm, Dc, Ds);
+  const isH   = MODEL === 'harmonic';
+  const warnEl = document.getElementById('warnMsg');
+
+  if (!valid) {
+    const lo = Math.min(Dc,Ds).toFixed(3), hi = Math.max(Dc,Ds).toFixed(3);
+    warnEl.textContent = isH
+      ? `⚠ 參數無效：ρ_mix 須介於 ${lo} 與 ${hi} 之間`
+      : `⚠ 參數無效：D_mix 須介於 ${lo} 與 ${hi} 之間`;
+    warnEl.classList.add('show');
+  } else {
+    warnEl.classList.remove('show');
+  }
+
+  const w0  = valid ? calcWc(Rm, Dc, Ds) : NaN;
+  const ws0 = valid ? (1-w0) : NaN;
+
+  const fmt = v => isNaN(v) ? '—' : (v*100).toFixed(2)+' %';
+  const wcEl = document.getElementById('resWc');
+  const wsEl = document.getElementById('resWs');
+  wcEl.textContent = fmt(w0); wcEl.classList.toggle('invalid', !valid);
+  wsEl.textContent = fmt(ws0); wsEl.classList.toggle('invalid', !valid);
+  document.getElementById('resRatio').textContent =
+    valid ? `${(w0*100).toFixed(1)} : ${(ws0*100).toFixed(1)}` : '—';
+
+  // 驗算（反向計算）
+  if (valid) {
+    const dmixCheck = isH
+      ? (w0*Dc + ws0*Ds)                            // 算術平均驗算
+      : 1/(w0/Dc + ws0/Ds);                         // 調和平均驗算
+    document.getElementById('resDmix').textContent = dmixCheck.toFixed(4);
+  } else {
+    document.getElementById('resDmix').textContent = '—';
+  }
+
+  // ── 圖① sweep ──
+  {
+    const lo = Math.min(Dc,Ds)+0.003, hi = Math.max(Dc,Ds)-0.003;
+    const N=80, st=(hi-lo)/N;
+    const xs=[],ys=[],ref=[];
+    for(let i=0;i<=N;i++){
+      const r=lo+i*st;
+      xs.push(r.toFixed(3));
+      const v=calcWc(r,Dc,Ds)*100;
+      ys.push(v.toFixed(3));
+      ref.push(Math.abs(r-Rm)<st/1.5 ? v.toFixed(3) : null);
+    }
+    ch1.data.labels=xs; ch1.data.datasets[0].data=ys; ch1.data.datasets[1].data=ref;
+    const rmLbl = isH ? 'ρ_mix' : 'D_mix';
+    ch1.options.scales.x.title.text = rmLbl;
+    document.getElementById('ch1Title').innerHTML =
+      isH ? '① 混合比重 ρ<sub>mix</sub> → 水泥比例'
+          : '① 混合密度 D<sub>mix</sub> → 水泥比例';
+    document.getElementById('sub1').innerHTML =
+      `D<sub>c</sub>=${Dc.toFixed(3)}, D<sub>s</sub>=${Ds.toFixed(3)} 固定`;
+    ch1.update();
+  }
+
+  // ── 圖② D_c sweep ──
+  {
+    const lo=Math.max(Rm+0.01,2.80), hi=3.50, N=80, st=(hi-lo)/N;
+    const xs=[],ys=[],ref=[];
+    for(let i=0;i<=N;i++){
+      const d=lo+i*st;
+      xs.push(d.toFixed(3));
+      const v=calcWc(Rm,d,Ds)*100;
+      ys.push(v.toFixed(3));
+      ref.push(Math.abs(d-Dc)<st/1.5 ? v.toFixed(3) : null);
+    }
+    ch2.data.labels=xs; ch2.data.datasets[0].data=ys; ch2.data.datasets[1].data=ref;
+    document.getElementById('sub2').innerHTML =
+      `${isH?'ρ<sub>mix</sub>':'D<sub>mix</sub>'}=${Rm.toFixed(3)}, D<sub>s</sub>=${Ds.toFixed(3)} 固定`;
+    ch2.update();
+  }
+
+  // ── 圖③ D_s sweep ──
+  {
+    const lo=2.40, hi=Math.min(Rm-0.01,3.10), N=80, st=(hi-lo)/N;
+    const xs=[],ys=[],ref=[];
+    for(let i=0;i<=N;i++){
+      const d=lo+i*st;
+      xs.push(d.toFixed(3));
+      const v=calcWc(Rm,Dc,d)*100;
+      ys.push(v.toFixed(3));
+      ref.push(Math.abs(d-Ds)<st/1.5 ? v.toFixed(3) : null);
+    }
+    ch3.data.labels=xs; ch3.data.datasets[0].data=ys; ch3.data.datasets[1].data=ref;
+    document.getElementById('sub3').innerHTML =
+      `${isH?'ρ<sub>mix</sub>':'D<sub>mix</sub>'}=${Rm.toFixed(3)}, D<sub>c</sub>=${Dc.toFixed(3)} 固定`;
+    ch3.update();
+  }
+
+  // ── 敏感度 ──
+  const d=0.001;
+  const s_Rm = valid ? (calcWc(Rm+d,Dc,Ds)-w0)*100 : 0;
+  const s_Dc = valid ? (calcWc(Rm,Dc+d,Ds)-w0)*100 : 0;
+  const s_Ds = valid ? (calcWc(Rm,Dc,Ds+d)-w0)*100 : 0;
+
+  ch4.data.labels = [isH?'ρ_mix':'D_mix','D_c','D_s'];
+  ch4.data.datasets[0].data = [
+    parseFloat(Math.abs(s_Rm).toFixed(4)),
+    parseFloat(Math.abs(s_Dc).toFixed(4)),
+    parseFloat(Math.abs(s_Ds).toFixed(4))
+  ];
+  ch4.update();
+
+  // ── 表格 ──
+  const tb = document.getElementById('tableBody');
+  tb.innerHTML='';
+  const maxS = Math.max(Math.abs(s_Rm),Math.abs(s_Dc),Math.abs(s_Ds));
+  const w0str = valid?(w0*100).toFixed(3):'—';
+  const rows=[
+    { param: isH?'ρ<sub>mix</sub>':'D<sub>mix</sub>', cur:Rm.toFixed(3), s:s_Rm,
+      after: valid?(calcWc(Rm+d,Dc,Ds)*100).toFixed(3):'—' },
+    { param:'D<sub>c</sub>',  cur:Dc.toFixed(3), s:s_Dc,
+      after: valid?(calcWc(Rm,Dc+d,Ds)*100).toFixed(3):'—' },
+    { param:'D<sub>s</sub>',  cur:Ds.toFixed(3), s:s_Ds,
+      after: valid?(calcWc(Rm,Dc,Ds+d)*100).toFixed(3):'—' },
+  ];
+  rows.forEach(r=>{
+    const sign=r.s>=0?'+':'';
+    const rel=valid?(Math.abs(r.s)/maxS*100).toFixed(1)+' %':'—';
+    const tr=document.createElement('tr');
+    tr.innerHTML=`
+      <td>${r.param}</td>
+      <td class="hl">${r.cur}</td>
+      <td>${w0str}</td>
+      <td>${r.after}</td>
+      <td class="${r.s>=0?'pos':'neg'}">${valid?sign+r.s.toFixed(4)+' %':'—'}</td>
+      <td class="hl">${valid?Math.abs(r.s).toFixed(4)+' %':'—'}</td>
+      <td>${rel}</td>
+    `;
+    tb.appendChild(tr);
+  });
+}
+
+// ══ 滑桿雙向綁定 ══════════════════════════════════════
+function updateTrack(el){
+  const pct=((parseFloat(el.value)-parseFloat(el.min))/(parseFloat(el.max)-parseFloat(el.min))*100).toFixed(1)+'%';
+  el.style.setProperty('--pct',pct);
+}
+
+function bindPair(slId,inId,setter){
+  const sl=document.getElementById(slId);
+  const inp=document.getElementById(inId);
+  updateTrack(sl);
+  sl.addEventListener('input',()=>{
+    const v=parseFloat(sl.value);
+    inp.value=v.toFixed(3); updateTrack(sl); setter(v); updateAll();
+  });
+  inp.addEventListener('input',()=>{
+    let v=parseFloat(inp.value); if(isNaN(v))return;
+    v=Math.max(parseFloat(sl.min),Math.min(parseFloat(sl.max),v));
+    sl.value=v.toFixed(3); updateTrack(sl); setter(v); updateAll();
+  });
+  inp.addEventListener('change',()=>{
+    let v=parseFloat(inp.value);
+    if(isNaN(v)){inp.value=sl.value;return;}
+    v=Math.max(parseFloat(sl.min),Math.min(parseFloat(sl.max),parseFloat(v.toFixed(3))));
+    inp.value=v.toFixed(3); sl.value=v.toFixed(3); updateTrack(sl); setter(v); updateAll();
+  });
+}
+
+bindPair('slRm','inRm',v=>Rm=v);
+bindPair('slDc','inDc',v=>Dc=v);
+bindPair('slDs','inDs',v=>Ds=v);
+
+updateAll();
+
+// ── Service Worker 註冊 ──
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js')
+      .then(reg => console.log('SW registered:', reg.scope))
+      .catch(err => console.warn('SW registration failed:', err));
+  });
+}
+</script>
+</body>
+</html>
